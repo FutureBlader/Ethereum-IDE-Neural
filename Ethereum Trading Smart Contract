@@ -1,0 +1,76 @@
+# Ethereum-IDE-Neural
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+// Interface for interacting with UniswapV2
+interface IUniswapV2Router {
+    function swapExactETHForTokens(
+        uint amountOutMin,
+        address[] calldata path,
+        address to,
+        uint deadline
+    ) external payable returns (uint[] memory amounts);
+    
+    function getAmountsOut(uint amountIn, address[] calldata path) external view returns (uint[] memory amounts);
+}
+
+contract AutoTrader {
+    address public owner;
+    IUniswapV2Router public uniswapRouter;
+    address public WETH;
+    address public token;
+    uint public threshold;
+
+    constructor(address _uniswapRouter, address _WETH, address _token, uint _threshold) {
+        owner = msg.sender;
+        uniswapRouter = IUniswapV2Router(_uniswapRouter);
+        WETH = _WETH;
+        token = _token;
+        threshold = _threshold;
+    }
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Not owner");
+        _;
+    }
+
+    function setThreshold(uint _threshold) external onlyOwner {
+        threshold = _threshold;
+    }
+
+    function executeTrade() external onlyOwner {
+        uint amountIn = address(this).balance;
+        address[] memory path = new address[](2);
+        path[0] = WETH;
+        path[1] = token;
+        
+        uint[] memory amountsOut = uniswapRouter.getAmountsOut(amountIn, path);
+        uint amountOut = amountsOut[1];
+        
+        require(amountOut >= threshold, "Threshold not met");
+
+        uniswapRouter.swapExactETHForTokens{ value: amountIn }(
+            amountOut,
+            path,
+            address(this),
+            block.timestamp + 300
+        );
+    }
+
+    receive() external payable {}
+
+    function withdrawTokens(address _token) external onlyOwner {
+        uint balance = IERC20(_token).balanceOf(address(this));
+        IERC20(_token).transfer(owner, balance);
+    }
+
+    function withdrawETH() external onlyOwner {
+        payable(owner).transfer(address(this).balance);
+    }
+}
+
+// Interface for ERC20 tokens
+interface IERC20 {
+    function balanceOf(address account) external view returns (uint256);
+    function transfer(address recipient, uint256 amount) external returns (bool);
+}
